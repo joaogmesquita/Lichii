@@ -1086,6 +1086,9 @@ bool KeplerCompute::UpscaleInsteadOfNativeProgram() {
             u32 nonzero{}, samples{};
             u64 sum{};
             for (u64 offset = 0; offset < size; offset += 4096 + 4) {
+                if (!memory_manager.IsFullyMappedRange(tic.Address() + offset, sizeof(u32))) {
+                    continue;
+                }
                 const u32 word = memory_manager.Read<u32>(tic.Address() + offset);
                 ++samples;
                 nonzero += word != 0;

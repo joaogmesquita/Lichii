@@ -78,5 +78,12 @@ constexpr u32 MESH_EMULATION_ARGS_WORDS = 10;
 /// draw's output is allocated from the arena every draw of the submission shares; mesh
 /// workgroups that do not fit are not dispatched.
 [[nodiscard]] std::vector<u32> EmitMeshEmulationDistribution(const Profile& profile);
+/// Words per lane in the buffer of EmitCooperativeHmmaTest: the guest registers a0 a1 a2 a3 b0 b1
+/// c0 c1 as input, then d0 d1 as output.
+constexpr u32 COOPERATIVE_HMMA_TEST_LANE_WORDS = 10;
+
+/// A compute shader of one warp running the HMMA.16816.F16 lowering on the registers in its storage
+/// buffer (set 0, binding 0), to check at startup that the driver's matrix layout is the expected.
+[[nodiscard]] std::vector<u32> EmitCooperativeHmmaTest(u32 spirv_version);
 
 } // namespace Shader::Backend::SPIRV

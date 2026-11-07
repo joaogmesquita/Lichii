@@ -2138,6 +2138,18 @@ bool RasterizerVulkan::UsesNvidiaDlss() const {
     return texture_cache_runtime.UsesNvidiaDlss();
 }
 
+bool RasterizerVulkan::EmulatesNativeTensorPrograms() const {
+    // EDEN_NX2_EMULATE_TENSOR=0/1 forces either path for A/B runs.
+    static const char* const forced = std::getenv("EDEN_NX2_EMULATE_TENSOR");
+    if (forced != nullptr && (forced[0] == '0' || forced[0] == '1')) {
+        return forced[0] == '1';
+    }
+    // Mesa's Intel driver takes minutes to compile an emulated network (Ocarina of Time's has 768
+    // matrix multiplies) and then runs it at about 8 FPS. Integrated GPUs have neither the compute
+    // nor the memory bandwidth for it either. The upscale stand-in draws instead.
+    return device.GetDriverID() != VK_DRIVER_ID_INTEL_OPEN_SOURCE_MESA && !device.IsIntegrated();
+}
+
 bool RasterizerVulkan::SupportsGameDlssNetwork() const {
     // Compute pipelines are created 32 threads wide where the device can be told to.
     return device.IsGuestWarpSizeSupported(VK_SHADER_STAGE_COMPUTE_BIT);

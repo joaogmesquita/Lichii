@@ -1269,7 +1269,15 @@ bool TextureCache<P>::BlitImage(const Tegra::Engines::Fermi2D::Surface& dst,
     bool is_dst_rescaled = True(dst_image.flags & ImageFlagBits::Rescaled);
 
     const bool is_resolve = src_image.info.num_samples != 1 && dst_image.info.num_samples == 1;
-    if (is_src_rescaled != is_dst_rescaled) {
+    // A packed RGB9E5 frame lives in a B10G11R11 image as raw bits: ScaleUp would filter them as
+    // colour and fill the frame with noise. Keep such a blit at the guest's resolution.
+    const bool packed_source = ImageInfo(src).format == PixelFormat::E5B9G9R9_FLOAT;
+    if (packed_source) {
+        ScaleDown(src_image);
+        ScaleDown(dst_image);
+        is_src_rescaled = True(src_image.flags & ImageFlagBits::Rescaled);
+        is_dst_rescaled = True(dst_image.flags & ImageFlagBits::Rescaled);
+    } else if (is_src_rescaled != is_dst_rescaled) {
         if (ImageCanRescale(src_image)) {
             ScaleUp(src_image);
             is_src_rescaled = True(src_image.flags & ImageFlagBits::Rescaled);

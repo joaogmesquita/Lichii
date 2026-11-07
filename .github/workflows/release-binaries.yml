@@ -79,8 +79,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-x86_64
-            runner: windows-2022
           - platform: windows-x86_64-pgo
             runner: windows-2022
             pgo: true
@@ -332,7 +330,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          profile="-fprofile-use=$(cygpath -m "$PWD/eglantine.profdata") -Wno-backend-plugin \
+          profile="-march=znver3 -mtune=znver3 -fprofile-use=$(cygpath -m "$PWD/eglantine.profdata") -Wno-backend-plugin \
             -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"
           cmake -S . -B build/release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -351,6 +349,7 @@ jobs:
             -DLICHII_BUILD_PLATFORM=${{ matrix.platform }} \
             -DUSE_DISCORD_PRESENCE=OFF \
             -DUSE_CCACHE=ON \
+            -DENABLE_LTO=ON \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld \

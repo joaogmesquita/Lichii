@@ -1159,7 +1159,8 @@ void PipelineCache::TickFrame() {
 void PipelineCache::EvictUnusedPipelines() {
     // Building a pipeline again on MoltenVK means a Metal compile mid-game, far dearer than the
     // 2-3 ms below, so none are evicted there.
-    if (device.IsMoltenVK()) {
+    // An integrated GPU compiles slowly and has the host's memory: keep them there as well.
+    if (device.IsMoltenVK() || device.IsIntegrated()) {
         return;
     }
     // Each built pipeline holds ~0.45 MB of driver memory and none was ever destroyed, so it grew

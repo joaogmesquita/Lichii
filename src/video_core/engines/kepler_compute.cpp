@@ -594,11 +594,21 @@ bool KeplerCompute::DispatchNativeCompute(const NativeQmdScheduler::Descriptor& 
         dispatched = false;
         if (dlss_chain.active) {
             ++dlss_chain.rejected;
-        } else if (std::string_view{error.what()}.find("matrix multiply") !=
-                   std::string_view::npos) {
-            DescribeNativeResources(qmd);
-            // The console runs this on tensor cores; stand in with a plain upscale of its input.
-            return UpscaleInsteadOfNativeProgram();
+        } else {
+            // Only the first dispatch names the reason: ShaderCache::ComputeShader answers repeats
+            // of a rejected program with a plain "pipeline unavailable", so remember the program.
+            const GPUVAddr program = regs.code_loc.Address() + launch_description.program_start;
+            if (std::string_view{error.what()}.find("matrix multiply") !=
+                std::string_view::npos) {
+                if (matrix_rejected_programs.insert(program).second) {
+                    DescribeNativeResources(qmd);
+                }
+            }
+            if (matrix_rejected_programs.contains(program)) {
+                // The console runs this on tensor cores; stand in with a plain upscale of its
+                // input.
+                return UpscaleInsteadOfNativeProgram();
+            }
         }
     }
     if (dlss_chain.output_pass) {

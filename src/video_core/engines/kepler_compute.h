@@ -261,6 +261,9 @@ public:
     /// emulated; rejected ones get UpscaleInsteadOfNativeProgram.
     [[nodiscard]] bool EmulatesNativeTensorPrograms() const;
 
+    /// Native programs rejected for their matrix multiplies, which the upscale stand-in replaces.
+    std::unordered_set<GPUVAddr> matrix_rejected_programs;
+
     /// GPU thread split with macros on its front half (gpu_split.h, EDEN_NX2_SPLIT=2), called by
     /// the front instead of CallMethod for native compute engines: runs their macros and macro
     /// uploads against a copy of the registers and sends the register writes to the back.

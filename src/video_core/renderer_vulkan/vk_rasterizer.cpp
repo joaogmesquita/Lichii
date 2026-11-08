@@ -916,7 +916,7 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
             }
         }
     }
-    // EDEN_NX2_SKIP_SHADOWS_FILE=<path>: while that file exists, skip depth-only draws into a
+    // EDEN_NX2_SKIP_SHADOWS_FILE=<path>: while that file exists, skip depth-only draws into a near
     // square depth target (shadow maps), to measure what the shadow passes cost. The depth-only
     // target sizes seen are logged once each.
     static const char* const skip_shadows_file{std::getenv("EDEN_NX2_SKIP_SHADOWS_FILE")};
@@ -934,12 +934,26 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
                 LOG_INFO(Render_Vulkan, "EDEN_NX2_SKIP_SHADOWS_FILE: depth-only target {}x{} (layers {})",
                          width, height, regs.zeta_size.depth.Value());
             }
+            // Ocarina of Time sizes its shadow maps dynamically (944x933, 1024x1010, ...): near
+            // square, unlike the screen-shaped depth targets.
+            const bool shadow_shaped{std::max(width, height) - std::min(width, height) <=
+                                     std::max(width, height) / 20};
+            if (shadow_shaped) {
+                static std::set<u64> logged;
+                const auto& hashes{pipeline->ShaderHashes()};
+                if (logged.size() < 64 && logged.insert(hashes[1] ^ (hashes[5] << 1)).second) {
+                    LOG_INFO(Render_Vulkan,
+                             "EDEN_NX2_SKIP_SHADOWS_FILE: shadow draw {}x{} shaders {:016x} {:016x} "
+                             "{:016x} {:016x} mesh {}",
+                             width, height, hashes[0], hashes[1], hashes[3], hashes[5], mesh_draw);
+                }
+            }
             static bool skip_shadows{};
             static u32 skip_shadows_check{};
             if ((skip_shadows_check++ % 1024) == 0) {
                 skip_shadows = std::filesystem::exists(skip_shadows_file);
             }
-            if (skip_shadows && width == height) {
+            if (skip_shadows && shadow_shaped) {
                 TraceRenderState(is_indexed, "skip-shadows-file", nullptr);
                 return;
             }

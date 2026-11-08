@@ -19,7 +19,9 @@
 #include <set>
 #include <span>
 #include <fstream>
+#include <iterator>
 #include <mutex>
+#include <sstream>
 #include <string_view>
 #include <vector>
 
@@ -867,6 +869,81 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func, bool is_in
                                        : "no VK_EXT_mesh_shader");
         TraceRenderState(is_indexed, "mesh-skipped", nullptr);
         return;
+    }
+    // EDEN_NX2_SKIP_SHADERS_FILE=<path>: skip draws whose pipeline uses a shader hash listed in
+    // that file (hex, separated by spaces, commas or lines; the frame dump's "shaders"). The file
+    // is reread when it changes (checked every 1024 draws) and an absent file skips nothing, so a
+    // pass's GPU cost and look can be compared in one run on GPUs no profiler supports.
+    static const char* const skip_shaders_file{std::getenv("EDEN_NX2_SKIP_SHADERS_FILE")};
+    if (skip_shaders_file) {
+        static std::vector<u64> skip_hashes;
+        static std::filesystem::file_time_type skip_time{};
+        static u32 skip_check{};
+        if ((skip_check++ % 1024) == 0) {
+            std::error_code ec;
+            const auto time{std::filesystem::last_write_time(skip_shaders_file, ec)};
+            if (ec) {
+                if (!skip_hashes.empty()) {
+                    LOG_INFO(Render_Vulkan, "EDEN_NX2_SKIP_SHADERS_FILE: file gone, nothing skipped");
+                }
+                skip_hashes.clear();
+                skip_time = {};
+            } else if (time != skip_time) {
+                skip_time = time;
+                skip_hashes.clear();
+                std::ifstream in{skip_shaders_file};
+                std::string text{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+                std::ranges::replace(text, ',', ' ');
+                std::istringstream tokens{text};
+                std::string token;
+                while (tokens >> token) {
+                    char* end{};
+                    const u64 hash{std::strtoull(token.c_str(), &end, 16)};
+                    if (hash != 0 && end && *end == '\0') {
+                        skip_hashes.push_back(hash);
+                    }
+                }
+                LOG_INFO(Render_Vulkan, "EDEN_NX2_SKIP_SHADERS_FILE: skipping draws of {} shaders",
+                         skip_hashes.size());
+            }
+        }
+        if (!skip_hashes.empty()) {
+            for (const u64 hash : pipeline->ShaderHashes()) {
+                if (hash != 0 && std::ranges::find(skip_hashes, hash) != skip_hashes.end()) {
+                    TraceRenderState(is_indexed, "skip-shaders-file", nullptr);
+                    return;
+                }
+            }
+        }
+    }
+    // EDEN_NX2_SKIP_SHADOWS_FILE=<path>: while that file exists, skip depth-only draws into a
+    // square depth target (shadow maps), to measure what the shadow passes cost. The depth-only
+    // target sizes seen are logged once each.
+    static const char* const skip_shadows_file{std::getenv("EDEN_NX2_SKIP_SHADOWS_FILE")};
+    if (skip_shadows_file) {
+        const auto& regs{maxwell3d->regs};
+        bool depth_only{regs.zeta_enable != 0 && regs.zeta.Address() != 0};
+        for (u32 index = 0; depth_only && index < regs.rt_control.count && index < 8; ++index) {
+            depth_only = regs.rt[regs.rt_control.Map(index)].Address() == 0;
+        }
+        if (depth_only) {
+            static std::set<std::pair<u32, u32>> sizes;
+            const u32 width{regs.zeta_size.width};
+            const u32 height{regs.zeta_size.height};
+            if (sizes.size() < 32 && sizes.emplace(width, height).second) {
+                LOG_INFO(Render_Vulkan, "EDEN_NX2_SKIP_SHADOWS_FILE: depth-only target {}x{} (layers {})",
+                         width, height, regs.zeta_size.depth.Value());
+            }
+            static bool skip_shadows{};
+            static u32 skip_shadows_check{};
+            if ((skip_shadows_check++ % 1024) == 0) {
+                skip_shadows = std::filesystem::exists(skip_shadows_file);
+            }
+            if (skip_shadows && width == height) {
+                TraceRenderState(is_indexed, "skip-shadows-file", nullptr);
+                return;
+            }
+        }
     }
     // Mesh emulation: one output block per mesh workgroup, written by the pipeline's compute
     // dispatch and drawn as groups * vertices-per-group triangle list vertices.
